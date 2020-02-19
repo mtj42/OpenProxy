@@ -18,22 +18,6 @@ logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
 DEFAULT_SSOCK_ADDR = ("localhost", 8080)
 
 
-class HttpRequest:
-    def __init__(self, data):
-        self.raw = data
-        headers, self.body = data.decode("latin-1").split("\r\n\r\n", 1)
-        request_line, headers = headers.split("\r\n", 1)
-        self.method, query, self.protocol = request_line.split(" ", 3)
-        headers_dict = {}
-        for line in headers.split("\r\n"):
-            name, value = line.split(":", 1)
-            headers_dict[name] = value.strip()
-        self.headers = headers_dict
-        if query.startswith("http://") or query.startswith("https://"):
-            # for some reason the whole http://example.com/?a=b is in there
-            logging.warning("request_line has protocol and FQDN in it; this will likely break the request")
-
-
 class ClientSocket:
 
     def __init__(self):
@@ -74,13 +58,13 @@ class ClientSocket:
         logging.debug("data[0:1000]:\n%s" % data[0:1000])
         return data
 
-    def forward_http_request(self, req):
-        logging.debug("forwarding http request...")
-        self.connect((req.headers['Host'], 80))
-        self.send(req.raw)
-        logging.error("receive doesn't seem to be working correctly...")
-        raise
-        return self.recv()
+    # def forward_http_request(self, req):
+    #     logging.debug("forwarding http request...")
+    #     self.connect((req.headers['Host'], 80))
+    #     self.send(req.raw)
+    #     logging.error("receive doesn't seem to be working correctly...")
+    #     raise
+    #     return self.recv()
 
     def _decode(self, data):
         logging.debug("decoding recv results... (client socket)")
@@ -103,7 +87,6 @@ class ClientSocket:
         logging.debug("msg...:\n%s" % msg)
         self.send(msg.encode())
         return self.recv()
-
 
 
 class ServerSocket:
@@ -168,15 +151,3 @@ class ServerSocket:
         self.bind_and_listen((domain, 8080))
         self.serve_forever()
         logging.debug("killing server...")
-
-
-# test by running $ curl -X POST -d "Hello=World" -x localhost:8080 example.com
-# then calling client.recv(1000) on line 103
-
-# s_sock = ServerSocket()
-# s_sock.bind_and_listen(DEFAULT_SSOCK_ADDR)
-# s_sock.serve_forever()
-# s_sock._test("localhost")
-
-c_sock = ClientSocket()
-c_sock._test("example.org")
