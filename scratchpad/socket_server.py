@@ -3,6 +3,8 @@ import select
 import logging
 import socket
 
+import ssl
+
 from IPython import embed
 
 """
@@ -36,6 +38,9 @@ class HttpRequest:
 class ClientSocket:
 
     def __init__(self):
+        logging.debug("==============================")
+        logging.debug("=== INCOMING CLIENT SOCKET ===")
+        logging.debug("==============================")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def connect(self, addr):
@@ -51,7 +56,7 @@ class ClientSocket:
     def recv(self, decode=True):
         s_time = time.time()  # Should probably use `sock.settimeout(timeout)`
         chunk_size = 128
-        timeout = 5
+        timeout = 2
         data = b""
 
         logging.debug("socket receiving data... (client socket)")
@@ -89,9 +94,15 @@ class ClientSocket:
         return data
 
     def _test(self, domain):
+        # not working with HTTP/1.1
+        # THANK YOU, curse you HTTP 1.1 - https://stackoverflow.com/a/56503783/2418744
+        # the issue was the `Connection: close` header must be present
+        # ^^^ also talks about TLS wrapping the socket
         logging.debug("_test run! (client socket)")
-        self.connect((domain, 80))
-        self.send(b"GET / HTTP/1.0\r\n\r\n")
+        self.connect((domain, 443))
+        msg = "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
+        logging.debug("msg...:\n%s" % msg)
+        self.send(msg.encode())
         return self.recv()
 
 
@@ -99,6 +110,9 @@ class ClientSocket:
 class ServerSocket:
 
     def __init__(self):
+        logging.debug("==============================")
+        logging.debug("=== CREATING SOCKET SERVER ===")
+        logging.debug("==============================")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setblocking(0)
         self.MAX_REQUEST_SIZE = 1000000  # 1 MB
@@ -125,7 +139,7 @@ class ServerSocket:
                 # r,w,e = select.select([self.sock, self.client_sockets_list], [self.writeable_sockets_list?])
                 # Is this even necessary ^? Why does it work w/ Curl but not w/ the browser?
                 # Is it worth looking at asyncio at this point?
-                embed()
+                # embed()
                 resp = self.handle_readable(client, data)
                 logging.debug("got the response; sending back to client")
                 client.send(resp.encode())
@@ -142,9 +156,9 @@ class ServerSocket:
 
     def handle_readable(self, client, data):
         logging.debug("handling data...")
-        req = HttpRequest(data)
+        logging.info("data[0:100]: {}".format(data[0:100]))
+        # req = HttpRequest(data) # probably a bad idea to build my own HTTP parser
         client = ClientSocket()
-        # resp = client.forward_http_request(req)  # HTTP response
         resp = client._test("google.com")
         return resp
 
@@ -157,8 +171,11 @@ class ServerSocket:
 
 # test by running $ curl -X POST -d "Hello=World" -x localhost:8080 example.com
 # then calling client.recv(1000) on line 103
+
 s_sock = ServerSocket()
 s_sock._test("localhost")
 
+logging.debug("end")
+
 # c_sock = ClientSocket()
-# c_sock._test("google.com")
+# c_sock._test("example.org")
