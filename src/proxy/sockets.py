@@ -3,6 +3,8 @@ import select
 import logging
 import socket
 
+import http_util
+
 import ssl
 
 from IPython import embed
@@ -11,6 +13,19 @@ from IPython import embed
 https://docs.python.org/3/howto/sockets.html
 https://medium.com/@gdieu/build-a-tcp-proxy-in-python-part-1-3-7552cd5afdfe
 https://www.geeks3d.com/hacklab/20190110/python-3-simple-http-request-with-the-socket-module/
+"""
+
+"""
+How will this work?
+
+1. Run (asynchronously) a ServerSocket always listening on localhost:8888
+2. Any time a new request comes into the ServerSocket,
+    1. Check if Intercept flag is set
+    2. Apply any search/replace filters to the request
+    3. Create a new ClientSocket (async)
+    4. Wait for response
+    5. Relay data back to client (browser/cURL)
+
 """
 
 logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
@@ -22,7 +37,7 @@ class ClientSocket:
 
     def __init__(self):
         logging.debug("==============================")
-        logging.debug("=== INCOMING CLIENT SOCKET ===")
+        logging.debug("=== CREATING CLIENT SOCKET ===")
         logging.debug("==============================")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -58,13 +73,13 @@ class ClientSocket:
         logging.debug("data[0:1000]:\n%s" % data[0:1000])
         return data
 
-    # def forward_http_request(self, req):
-    #     logging.debug("forwarding http request...")
-    #     self.connect((req.headers['Host'], 80))
-    #     self.send(req.raw)
-    #     logging.error("receive doesn't seem to be working correctly...")
-    #     raise
-    #     return self.recv()
+    def forward_http_request(self, req):
+        logging.debug("forwarding http request...")
+        self.connect((req.headers['Host'], 80))
+        self.send(req.raw)
+        logging.error("receive doesn't seem to be working correctly...")
+        raise
+        return self.recv()
 
     def _decode(self, data):
         logging.debug("decoding recv results... (client socket)")
@@ -83,10 +98,11 @@ class ClientSocket:
         # ^^^ also talks about TLS wrapping the socket
         logging.debug("_test run! (client socket)")
         self.connect((domain, 80))
-        msg = "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
+        msg = "GET / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n".format(domain)
         logging.debug("msg...:\n%s" % msg)
         self.send(msg.encode())
         return self.recv()
+
 
 
 class ServerSocket:
@@ -139,15 +155,12 @@ class ServerSocket:
     def handle_readable(self, client, data):
         logging.debug("handling data...")
         logging.info("data[0:100]: {}".format(data[0:100]))
-        # req = HttpRequest(data) # probably a bad idea to build my own HTTP parser
-        client = ClientSocket()
-        # resp = client._test("google.com")
-        # return resp
-        import sys
-        sys.exit("===TODO===")
-
-    def _test(self, domain="localhost"):
-        logging.debug("_test run! (server socket)")
-        self.bind_and_listen((domain, 8080))
-        self.serve_forever()
-        logging.debug("killing server...")
+        http_util.intercept_http_request(data)
+        c_sock = ClientSocket()
+        c_sock.connect(("example.com",80))
+        msg = "GET / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n".format(("example.com",80)[0])
+        c_sock.send(msg.encode())
+        resp = c_sock.recv()
+        return resp
+        # import sys
+        # sys.exit("===TODO===")
